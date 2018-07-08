@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc" xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+
+    <flow name="Receive">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/opp1" allowedMethods="POST" doc:name="HTTP"/>
+        <set-session-variable variableName="messageID"
+			value="#[server.dateTime.format('yyyyMMddHHmmssSSS')]#[UUID.randomUUID().toString().replace('-', '').substring(0,5)]"
+			doc:name="messageID" />
+        <logger message="#[sessionVars.messageID] New Opportunity: Account #[xpath3('/Opportunity/AccountID[1]')] Opportunity: #[xpath3('/Opportunity/Name[1]')]" level="INFO" doc:name="Logger"/>
+        <vm:outbound-endpoint exchange-pattern="one-way" path="opportunity1" connector-ref="VM" doc:name="VM"/>
+		<set-payload value="#[sessionVars.messageID] New Opportunity: Account #[xpath3('/Opportunity/AccountID[1]')] Opportunity: #[xpath3('/Opportunity/Name[1]')]" doc:name="Set Payload"/>
+    </flow>
+    <flow name="SendToSFDC">
+        <vm:inbound-endpoint exchange-pattern="one-way" path="opportunity1" connector-ref="VM" doc:name="VM"/>
+        <dw:transform-message doc:name="Transform Message" metadata:id="d272c507-a378-49d5-b50c-6eaa629c80a7">
+            <dw:input-payload mimeType="application/xml"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+[{
+	Name: payload.Opportunity.Name,
+	StageName: 'Qualification',
+	Account:{
+         External_Account__c: payload.Opportunity.AccountID
+     },
+	Amount: payload.Opportunity.Amount as :string,
+	CloseDate: payload.Opportunity.CloseDate as :date
+}]]]></dw:set-payload>
+        </dw:transform-message>
+        <sfdc:create config-ref="Salesforce__Basic_Authentication" type="Opportunity" doc:name="Salesforce">
+            <sfdc:objects ref="#[payload]"/>
+        </sfdc:create>
+        <logger message="#[payload]" level="INFO" doc:name="Logger"/>
+    </flow>
+</mule>

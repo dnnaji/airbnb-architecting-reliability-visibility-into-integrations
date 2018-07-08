@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc" xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+
+    <flow name="Receive2">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="/opp2" allowedMethods="POST" doc:name="HTTP"/>
+        <set-session-variable variableName="messageID"
+			value="#[server.dateTime.format('yyyyMMddHHmmssSSS')]#[UUID.randomUUID().toString().replace('-', '').substring(0,5)]"
+			doc:name="messageID" />
+        <object-to-string-transformer/>       
+        <set-variable value="#[payload]" variableName="originalPayload" doc:name="Variable" />
+			
+        <set-session-variable variableName="account" value="#[xpath3('/Opportunity/AccountID[1]')]" doc:name="Set Account Var" />
+        <set-session-variable variableName="opportunity" value="#[xpath3('/Opportunity/Name[1]')]" doc:name="Set Opportunity Var" />
+        
+        <logger message="#[sessionVars.messageID] New Opportunity: Account #[sessionVars.account] Opportunity: #[sessionVars.opportunity]" level="INFO" doc:name="Log Receipt Account Opportunity"/>
+        <object-to-string-transformer/>       
+		<enricher source="#[payload]" target="#[flowVars.trash]" doc:name="Message Enricher">
+        	<vm:outbound-endpoint exchange-pattern="one-way" path="InsertOpp" connector-ref="VM" doc:name="Send to MSGDB"/>		
+		</enricher>
+		<set-payload value="#[flowVars.originalPayload]"/> 
+        <vm:outbound-endpoint exchange-pattern="one-way" path="opportunity2" connector-ref="VM" doc:name="Send To SFDC opportunity2"/>
+		<set-payload value="#[sessionVars.messageID] New Opportunity: Account #[sessionVars.account] Opportunity: #[sessionVars.opportunity]" doc:name="Set Payload to return HTTP Call"/>
+    </flow>
+    <flow name="SendToSFDC2">
+        <vm:inbound-endpoint exchange-pattern="one-way" path="opportunity2" connector-ref="VM" doc:name="VM opportunity2"/>
+        <dw:transform-message doc:name="Transform to SFDC Opportunity" metadata:id="d272c507-a378-49d5-b50c-6eaa629c80a7">
+            <dw:input-payload mimeType="application/xml"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+[{
+	Name: payload.Opportunity.Name,
+	StageName: 'Qualification',
+	Account:{
+         External_Account__c: payload.Opportunity.AccountID
+     },
+	Amount: payload.Opportunity.Amount as :string,
+	CloseDate: payload.Opportunity.CloseDate as :date
+}]]]></dw:set-payload>
+        </dw:transform-message>
+        <sfdc:create config-ref="Salesforce__Basic_Authentication" type="Opportunity" doc:name="Salesforce Create Opportunity">
+            <sfdc:objects ref="#[payload]"/>
+        </sfdc:create>
+        <choice doc:name="Choice">
+            <when expression="#[payload.success=='true']">
+            	<object-to-string-transformer/>
+                <logger message="#[sessionVars.messageID] Success #[payload]" level="INFO" doc:name="Success Payload Logger"/>
+                <vm:outbound-endpoint exchange-pattern="one-way" path="updateOppComplete" connector-ref="VM" doc:name="VM updateOppComplete"/>
+            </when>
+            <otherwise>
+                <logger message="#[sessionVars.messageID] Failure #[payload]" level="INFO" doc:name="Fail Payload Logger"/>
+                <set-payload value="#[payload[0].errors[0].statusCode] #[payload[0].errors[0].message]" />
+                <vm:outbound-endpoint exchange-pattern="one-way" path="updateOppError" connector-ref="VM" doc:name="VM updateOppError"/>
+            </otherwise>
+        </choice>
+    </flow>
+</mule>

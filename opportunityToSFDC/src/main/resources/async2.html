@@ -1,0 +1,44 @@
+<head>
+<title>Opportunity Sync Status </title>
+</head>
+<h1>SFDC Opportunity Sync Status</h1>
+<p>
+</p>
+<table border="1">
+<tbody>
+<tr>
+<th>MessageID</th>
+<th>AccountID</th>
+<th>OpportunityName</th>
+<th>Accepted Time</th>
+<th>Completed Time</th>
+<th>Error Time</th>
+<th>Error Text</th>
+<th>Resubmit</th>
+
+
+</tr>
+#[
+    objects = payload;
+    String table = "";
+    for(int i = 0; i < objects.size(); i++) {
+		resubmit = "<a href=\"/int082/retry/"+objects[i].messageID+
+    		"\" target=\"_blank\">Resubmit</a>";
+    	timeopperror = objects[i].time_opp_errored==null ? "" : objects[i].time_opp_errored + " UTC";
+    	errordetail= objects[i].error_detail==null ? "" : objects[i].error_detail;
+    	time_opp_submitted= objects[i].time_opp_submitted==null ? "" : objects[i].time_opp_submitted + " UTC";
+        table += "<tr><td>" + objects[i].messageID + 
+        "</td><td>" + objects[i].accountID +
+        "</td><td>" + objects[i].opportunityName +
+        "</td><td>" + objects[i].time_opp_received + " UTC" +
+        "</td><td>" + time_opp_submitted +
+        "</td><td>" + timeopperror +
+        "</td><td>" + errordetail +
+        "</td><td>" + resubmit +
+        "</td></tr>";
+    }
+    return table;
+]
+
+</tbody>
+</table>

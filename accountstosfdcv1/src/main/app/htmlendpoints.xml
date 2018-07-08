@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+    <http:listener-config name="HTTP_Listener_Configuration" host="0.0.0.0" port="8081" basePath="int081" doc:name="HTTP Listener Configuration"/>
+    <flow name="htmlendpointsFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="table" allowedMethods="GET" doc:name="HTTP">
+             <http:response-builder>
+                <http:header headerName="Content-Type" value="text/html"/>
+            </http:response-builder>
+        </http:listener>
+        <db:select config-ref="MySQL_Configuration" doc:name="Database">
+            <db:parameterized-query><![CDATA[SELECT * FROM `msgdb`.`connect_sfdc_account`
+order by accept_time desc
+limit 100;]]></db:parameterized-query>        </db:select>
+
+         <parse-template location="async.html" doc:name="Parse Template"/>    
+        <set-property doc:name="Content Type" propertyName="Content-Type" value="text/html"/>
+    </flow>
+</mule>

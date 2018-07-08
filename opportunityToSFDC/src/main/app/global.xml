@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" version="EE-3.8.4"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="
+http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd 
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd 
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd">
+	<context:property-placeholder
+		location="file:///etc/itx-secrets/mulesoft.properties"
+		ignore-resource-not-found="true" ignore-unresolvable="true" order="1" />
+	<sfdc:config name="Salesforce__Basic_Authentication"
+		username="${sfdc.demo.username}" password="${sfdc.demo.password}"
+		securityToken="${sfdc.demo.token}" doc:name="Salesforce: Basic Authentication"
+		url="https://login.salesforce.com/services/Soap/u/38.0"
+		clearNullFields="true" />
+	<vm:connector name="VM" validateConnections="true"
+		doc:name="VM" />
+</mule>

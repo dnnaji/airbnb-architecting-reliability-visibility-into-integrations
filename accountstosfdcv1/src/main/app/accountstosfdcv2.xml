@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+		
+		
+    <flow name="accountstosfdcv2">
+        <sftp:inbound-endpoint connector-ref="HoneybadgerSFTP" host="${honeybadger.host}" port="22" path="muleesb/connect2" user="${honeybadger.key.username}" responseTimeout="10000" doc:name="SFTP"/>
+		<set-variable variableName="messageID"
+			value="#[server.dateTime.format('yyyyMMddHHmmssSSS')]#[UUID.randomUUID().toString().replace('-', '').substring(0,5)]"
+			doc:name="messageID" />
+		<logger level="INFO" doc:name="Logger" message="#[flowVars.messageID]  #[message.inboundProperties] "/>
+        <enricher source="#[payload]" target="#[flowVars.result]" doc:name="Message Enricher">
+            <flow-ref name="insertRecord" doc:name="insertRecord"/>
+        </enricher>
+        <dw:transform-message doc:name="Transform Message" metadata:id="16107c73-faad-4cdb-8d0b-0b293255644f">
+            <dw:input-payload mimeType="application/csv"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload map ((payload01 , indexOfPayload01) -> {
+	Phone: payload01.Phone,
+	Website: payload01.Site,
+	AnnualRevenue: payload01.Revenue,
+	Name: payload01.Name,
+	External_Account__c: payload01.ExtAccount_ID
+})]]></dw:set-payload>
+        </dw:transform-message>
+        <logger message="#[flowVars.messageID]  Got Payload Lines #[payload.size()]" level="INFO" doc:name="Logger"/>
+        <set-variable variableName="SubmittedObject" value="#[payload]" doc:name="Variable"/>
+        <sfdc:upsert config-ref="Salesforce__Basic_Authentication" externalIdFieldName="External_Account__c" type="Account" doc:name="Salesforce">
+            <sfdc:objects ref="#[payload]"/>
+        </sfdc:upsert>
+        <logger message="#[flowVars.messageID] Result #[payload]" level="DEBUG" doc:name="Logger"/>
+        <flow-ref name="CheckResults" doc:name="CheckResults"/>
+    	<flow-ref name="updateComplete" doc:name="updateComplete" />
+    </flow>
+    <flow name="insertRecord" processingStrategy="synchronous">
+        <db:insert config-ref="MySQL_Configuration" doc:name="Database">
+            <db:parameterized-query><![CDATA[INSERT INTO connect_sfdc_account
+(`messageID`,
+`filename`)
+VALUES
+(#[flowVars.messageID],
+#[message.inboundProperties.filename])]]></db:parameterized-query>
+        </db:insert>
+    </flow>
+    <flow name="updateComplete" processingStrategy="synchronous">
+        <db:update config-ref="MySQL_Configuration" doc:name="Database">
+            <db:parameterized-query><![CDATA[UPDATE connect_sfdc_account SET
+            `complete_time` = CURRENT_TIMESTAMP,
+            `lines` = #[flowVars.SubmittedObject.size()],
+            `errorlines` = #[flowVars.errorRows],
+            `error_text` = #[flowVars.errortext]
+            WHERE messageID=#[flowVars.messageID];
+            
+            ]]></db:parameterized-query>
+        </db:update>
+    </flow>
+    
+</mule>

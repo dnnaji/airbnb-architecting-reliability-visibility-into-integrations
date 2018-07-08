@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+
+
+  <db:mysql-config name="MySQL_Configuration" 
+    host="${rds.url}"
+    port="3306"
+    user="${rds.username}"
+    password="${rds.password}"
+    database="${rds.database}"
+    doc:name="MySQL Configuration" />
+    <flow name="msgdbFlow" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="one-way" path="InsertOpp" connector-ref="VM" doc:name="VM"/>
+        <db:insert config-ref="MySQL_Configuration" doc:name="Database">
+            <db:parameterized-query><![CDATA[INSERT INTO `msgdb`.`connect_opportunity_audit`
+(`messageID`,
+`accountID`,
+`opportunityName`,
+`appxml`
+)
+VALUES
+(#[sessionVars.messageID],
+#[sessionVars.account],
+#[sessionVars.opportunity],
+#[payload]
+);]]></db:parameterized-query>
+        </db:insert>
+        <logger message="Inserted #[sessionVars.messageID]" level="INFO" doc:name="Logger"/>
+    </flow>
+    <flow name="updateOppError" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="one-way" path="updateOppError" connector-ref="VM" doc:name="VM updateOppError"/>
+        <object-to-string-transformer />
+        <db:update config-ref="MySQL_Configuration" doc:name="Database">
+            <db:parameterized-query><![CDATA[UPDATE connect_opportunity_audit SET
+`time_opp_errored` = CURRENT_TIMESTAMP,
+`error_detail` = #[payload],
+`time_opp_submitted` = null
+WHERE `messageID` = #[sessionVars.messageID];]]></db:parameterized-query>
+        </db:update>
+    </flow>
+    <flow name="updateOppComplete" processingStrategy="synchronous">
+        <vm:inbound-endpoint exchange-pattern="one-way" path="updateOppComplete" connector-ref="VM" doc:name="VM updateOppComplete"/>
+        <db:update config-ref="MySQL_Configuration" doc:name="Database">
+            <db:parameterized-query><![CDATA[UPDATE connect_opportunity_audit SET
+`time_opp_submitted` = CURRENT_TIMESTAMP,
+WHERE `messageID` = #[sessionVars.messageID];]]></db:parameterized-query>
+        </db:update>
+    </flow>
+    
+    </mule>

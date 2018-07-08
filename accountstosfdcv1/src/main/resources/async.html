@@ -1,0 +1,37 @@
+<head>
+<title>Account Sync Status </title>
+</head>
+<h1>SFDC Account Sync Status</h1>
+<p>
+</p>
+<table border="1">
+<tbody>
+<tr>
+<th>MessageID</th>
+<th>Filename</th>
+<th>Lines</th>
+<th>Err Lines</th>
+<th>Accepted Time</th>
+<th>Completed Time</th>
+<th>Error Text</th>
+</tr>
+#[
+    objects = payload;
+    String table = "";
+    for(int i = 0; i < objects.size(); i++) {
+        complete_time = objects[i].complete_time==null ? "" : objects[i].complete_time + " UTC";
+    	error_text= objects[i].error_text==null ? "" : objects[i].error_text;
+        table += "<tr><td>" + objects[i].messageID + 
+        "</td><td>" + objects[i].filename +
+        "</td><td>" + objects[i].lines +
+        "</td><td>" + objects[i].errorlines +
+        "</td><td>" + objects[i].accept_time + " UTC" +
+        "</td><td>" + complete_time  +
+        "</td><td>" + error_text +
+        
+        "</td></tr>";
+    }
+    return table;
+]
+</tbody>
+</table>

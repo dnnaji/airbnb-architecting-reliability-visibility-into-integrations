@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <http:listener-config name="HTTP_Listener_Configuration" host="0.0.0.0" port="8082" basePath="int082" doc:name="HTTP Listener Configuration"/>
+    <flow name="getRecent">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="recent1" allowedMethods="GET" doc:name="HTTP">
+             <http:response-builder>
+                <http:header headerName="Content-Type" value="text/html"/>
+            </http:response-builder>
+        </http:listener>
+        <db:select config-ref="MySQL_Configuration" doc:name="Database">
+            <db:parameterized-query><![CDATA[SELECT * FROM `msgdb`.`connect_opportunity_audit`
+order by time_opp_received desc
+limit 20;]]></db:parameterized-query>
+        </db:select>
+
+         <parse-template location="async.html" doc:name="Parse Template"/>    
+        <set-property doc:name="Content Type" propertyName="Content-Type" value="text/html"/>
+    </flow>
+    <flow name="getRecent2">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="recent2" allowedMethods="GET" doc:name="HTTP">
+             <http:response-builder>
+                <http:header headerName="Content-Type" value="text/html"/>
+            </http:response-builder>
+        </http:listener>
+        <db:select config-ref="MySQL_Configuration" doc:name="Database">
+            <db:parameterized-query><![CDATA[SELECT * FROM `msgdb`.`connect_opportunity_audit`
+order by time_opp_received desc
+limit 20;]]></db:parameterized-query>
+        </db:select>
+
+         <parse-template location="async2.html" doc:name="Parse Template"/>    
+        <set-property doc:name="Content Type" propertyName="Content-Type" value="text/html"/>
+    </flow>
+    
+    <flow name="resubmit">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="retry/{messageID}" allowedMethods="GET" doc:name="HTTP"/>
+        <set-session-variable variableName="messageID" value="#[message.inboundProperties.'http.uri.params'.messageID]" doc:name="messageID"/>
+        <logger message="Retrying messageID: #[sessionVars.messageID]"
+			level="INFO" doc:name="Logger" />		
+		<db:select config-ref="MySQL_Configuration" doc:name="Database">
+            <db:parameterized-query><![CDATA[SELECT * FROM `msgdb`.`connect_opportunity_audit`
+            WHERE `messageID` = #[sessionVars.messageID];
+]]></db:parameterized-query>
+        </db:select>
+        <set-session-variable variableName="account" value="#[payload[0].accountID]" doc:name="Set Account Var" />
+        <set-session-variable variableName="opportunity" value="#[payload[0].opportunityName]" doc:name="Set Opportunity Var" />
+        <set-payload value="#[payload[0].appxml]"/>
+        <logger message="Retrying messageID: #[sessionVars.messageID] Account #[sessionVars.account] Opportunity: #[sessionVars.opportunity]"
+			level="INFO" doc:name="Logger" />
+        <vm:outbound-endpoint path="opportunity2"/>
+        <set-payload value="Retrying messageID: #[sessionVars.messageID] Account #[sessionVars.account] Opportunity: #[sessionVars.opportunity]" />
+    </flow>
+</mule>

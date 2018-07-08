@@ -1,0 +1,6 @@
+<Opportunity>
+    <Name>New Order For Widgets</Name>
+    <AccountID>12345</AccountID>
+    <Amount>10000</Amount>
+    <CloseDate>2017-05-31</CloseDate>
+</Opportunity>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp" xmlns:sfdc="http://www.mulesoft.org/schema/mule/sfdc" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+http://www.mulesoft.org/schema/mule/sfdc http://www.mulesoft.org/schema/mule/sfdc/current/mule-sfdc.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <sftp:connector name="HoneybadgerSFTP" identityFile="/etc/itx-secrets/id_honeybadger" validateConnections="true" doc:name="SFTP"/>
+ 	<context:property-placeholder
+		location="file:///etc/itx-secrets/mulesoft.properties"
+		ignore-resource-not-found="true" ignore-unresolvable="true" order="1" />   
+    <sfdc:config name="Salesforce__Basic_Authentication"
+		username="${sfdc.demo.username}" password="${sfdc.demo.password}"
+		securityToken="${sfdc.demo.token}" doc:name="Salesforce: Basic Authentication"
+		url="https://login.salesforce.com/services/Soap/u/38.0"
+		clearNullFields="true" />
+		
+		
+    <flow name="accountstosfdcv1Flow">
+        <sftp:inbound-endpoint connector-ref="HoneybadgerSFTP" host="${honeybadger.host}" port="22" path="muleesb/connect" user="${honeybadger.key.username}" responseTimeout="10000" doc:name="SFTP"/>
+        <dw:transform-message doc:name="Transform Message" metadata:id="16107c73-faad-4cdb-8d0b-0b293255644f">
+            <dw:input-payload mimeType="application/csv"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload map ((payload01 , indexOfPayload01) -> {
+	Phone: payload01.Phone,
+	Website: payload01.Site,
+	AnnualRevenue: payload01.Revenue,
+	Name: payload01.Name,
+	External_Account__c: payload01.ExtAccount_ID
+})]]></dw:set-payload>
+        </dw:transform-message>
+        <logger message="Got Payload Lines #[payload.size()]" level="INFO" doc:name="Logger"/>
+        <set-variable variableName="SubmittedObject" value="#[payload]" doc:name="Variable"/>
+        <sfdc:upsert config-ref="Salesforce__Basic_Authentication" externalIdFieldName="External_Account__c" type="Account" doc:name="Salesforce">
+            <sfdc:objects ref="#[payload]"/>
+        </sfdc:upsert>
+        <logger message="Result #[payload]" level="DEBUG" doc:name="Logger"/>
+        <flow-ref name="CheckResults" doc:name="CheckResults"/>
+    </flow>
+    <flow name="CheckResults" processingStrategy="synchronous">
+        <set-variable variableName="errortext" value="" doc:name="Variable"/>
+        <set-variable variableName="errorRows" value="#[0]" doc:name="Variable"/>
+        <foreach doc:name="For Each" counterVariableName="counter">
+            <choice doc:name="Choice">
+                <when expression="#[payload.success!='true']">
+                    <logger message="#[flowVars.?messageID] Line #[counter] #[payload]" level="WARN" doc:name="ErrorLogger"/>
+                    <set-variable variableName="errorRows" value="#[errorRows + 1]" doc:name="Variable"/>
+        			<set-variable variableName="errortext" value="#[errortext + 'Line ' + counter + ' ' + payload.errors[0].message + '.']" doc:name="Variable"/>
+                </when>
+                <otherwise>
+                    <logger message="#[flowVars.?messageID] Line #[counter] No Error" level="INFO" doc:name="Logger"/>
+                </otherwise>
+            </choice>
+        </foreach>
+        <logger message="#[flowVars.?messageID] Errors #[flowVars.errorRows] Result #[flowVars.errortext]" level="INFO" doc:name="Logger"/>
+        
+    </flow>
+</mule>
